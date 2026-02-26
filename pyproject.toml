@@ -1,0 +1,23 @@
+[project]
+name = "stylists-ai-backend-cert"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.133.1",
+    "langchain>=1.2.10",
+    "langchain-openai>=1.1.10",
+    "langchain-qdrant>=1.1.0",
+    "langgraph>=1.0.9",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.2.1",
+    "qdrant-client>=1.17.0",
+    "uvicorn>=0.41.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+]

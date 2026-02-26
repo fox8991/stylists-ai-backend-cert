@@ -1,0 +1,19 @@
+"""Application configuration loaded from environment variables."""
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+class Settings:
+    """App settings from environment variables."""
+
+    OPENAI_API_KEY: str = os.environ["OPENAI_API_KEY"]
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-5.2")
+    LANGSMITH_API_KEY: str | None = os.getenv("LANGSMITH_API_KEY")
+    LANGSMITH_PROJECT: str = os.getenv("LANGSMITH_PROJECT", "stylists-ai")
+
+
+settings = Settings()
