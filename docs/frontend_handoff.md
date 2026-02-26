@@ -17,30 +17,89 @@ Stylists.ai backend is a FastAPI server running a LangGraph ReAct agent that act
 
 ### POST /chat
 
-Send a message to the styling agent.
+Send a message to the styling agent. **Streams by default** via Server-Sent Events (SSE).
 
+**Request body:**
 ```json
-// Request
 {
   "message": "What colors look best on a Deep Autumn?",
   "user_id": "demo_user",       // optional, defaults to "demo_user"
   "thread_id": "default"         // optional, defaults to "default"
 }
+```
 
-// Response
+**Query params:**
+- `stream` (bool, default `true`): Set to `false` for a full JSON response instead of SSE.
+
+#### Streaming mode (default): `POST /chat`
+
+Returns `text/event-stream` with SSE events:
+
+```
+data: {"type": "token", "content": "Deep"}
+data: {"type": "token", "content": " Autumn"}
+data: {"type": "token", "content": " looks"}
+data: {"type": "token", "content": " best"}
+...
+data: {"type": "tool_call", "name": "search_style_knowledge", "args": "..."}
+...
+data: {"type": "end"}
+```
+
+Event types:
+- `token` — a chunk of the agent's response text. Append `content` to build the full message.
+- `tool_call` — the agent is calling a tool. Use `name` to show UI indicators (e.g., "Searching knowledge base...").
+- `end` — the response is complete.
+
+**Frontend usage (JavaScript):**
+```javascript
+const response = await fetch("http://localhost:8000/chat", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ message: "What colors suit me?", user_id: "user1", thread_id: "thread1" }),
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  const lines = decoder.decode(value).split("\n");
+  for (const line of lines) {
+    if (line.startsWith("data: ")) {
+      const event = JSON.parse(line.slice(6));
+      if (event.type === "token") {
+        // Append to chat message
+      } else if (event.type === "tool_call") {
+        // Show "Searching..." indicator
+      } else if (event.type === "end") {
+        // Done
+      }
+    }
+  }
+}
+```
+
+#### Non-streaming mode: `POST /chat?stream=false`
+
+Returns full JSON response:
+```json
 {
   "response": "Deep Autumn looks best in deep, warm, rich colors...",
   "tool_calls": [
     {"name": "search_style_knowledge", "args": {"query": "Deep Autumn colors", "domain": "color_theory"}}
   ],
-  "observations_stored": []      // will populate once memory system is added
+  "observations_stored": []
 }
 ```
 
+#### Field reference
+
 - `user_id`: Identifies the user for memory/personalization. Use a consistent ID per user.
 - `thread_id`: Identifies the conversation thread. Same thread_id = conversation continues with context. New thread_id = fresh conversation.
-- `tool_calls`: Shows which tools the agent used during reasoning (useful for UI indicators like "Searching knowledge base...")
-- `observations_stored`: Facts the agent learned about the user in this interaction
+- `tool_calls`: Shows which tools the agent used during reasoning.
+- `observations_stored`: Facts the agent learned about the user in this interaction (populates once memory system is added).
 
 ### GET /health
 
@@ -63,10 +122,10 @@ Server runs at `http://localhost:8000`.
 
 ## Key UX Considerations
 
-1. **Responses can take 5-15 seconds** — the agent may call tools (RAG retrieval + LLM reasoning). Show a loading state.
-2. **tool_calls in response** — can be used to show what the agent is doing ("Searching style knowledge...", "Looking at your wardrobe...")
-3. **thread_id for conversation continuity** — generate a UUID per chat session so multi-turn conversations work
-4. **Streaming is not yet implemented** — responses come as a single JSON payload. Streaming can be added later.
+1. **Streaming is the default** — tokens arrive incrementally via SSE. Render them as they come for a responsive chat experience.
+2. **tool_call events** — show what the agent is doing ("Searching style knowledge...", "Looking at your wardrobe...") while the user waits for content tokens.
+3. **thread_id for conversation continuity** — generate a UUID per chat session so multi-turn conversations work.
+4. **First token may take a few seconds** — the agent does RAG retrieval before generating. Show a typing indicator until the first token arrives.
 
 ## Product Context
 

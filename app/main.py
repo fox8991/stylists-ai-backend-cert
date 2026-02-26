@@ -1,9 +1,11 @@
-# app/main.py
 """FastAPI application for the Stylists.ai agent."""
 
+import json
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessageChunk
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
@@ -58,23 +60,74 @@ def _get_graph():
     return _graph
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+async def _stream_agent_response(request: ChatRequest):
+    """Stream agent response as Server-Sent Events.
+
+    Yields SSE events:
+        - {"type": "token", "content": "..."} for each LLM token
+        - {"type": "tool_call", "name": "...", "args": {...}} when agent calls a tool
+        - {"type": "end"} when the response is complete
+
+    Args:
+        request: Chat request with message, user_id, and thread_id.
+    """
+    graph = _get_graph()
+    config = {"configurable": {"thread_id": request.thread_id}}
+    input_state = {
+        "messages": [HumanMessage(content=request.message)],
+        "user_id": request.user_id,
+        "user_profile": {},
+        "observations": [],
+    }
+
+    async for chunk, metadata in graph.astream(
+        input_state, config=config, stream_mode="messages"
+    ):
+        # Stream LLM tokens from the agent node
+        if isinstance(chunk, AIMessageChunk):
+            # Token content
+            if chunk.content:
+                event = {"type": "token", "content": chunk.content}
+                yield f"data: {json.dumps(event)}\n\n"
+
+            # Tool calls
+            if chunk.tool_call_chunks:
+                for tc in chunk.tool_call_chunks:
+                    if tc.get("name"):
+                        event = {
+                            "type": "tool_call",
+                            "name": tc["name"],
+                            "args": tc.get("args", ""),
+                        }
+                        yield f"data: {json.dumps(event)}\n\n"
+
+    yield f"data: {json.dumps({'type': 'end'})}\n\n"
+
+
+@app.post("/chat")
+async def chat(request: ChatRequest, stream: bool = Query(default=True)):
     """Send a message to the Stylist Agent.
 
     Args:
         request: Chat request with message, user_id, and thread_id.
+        stream: If True (default), return SSE stream. If False, return JSON.
 
     Returns:
-        Agent response with tool call history.
+        SSE stream or JSON response depending on stream parameter.
     """
-    graph = _get_graph()
+    if stream:
+        return StreamingResponse(
+            _stream_agent_response(request),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            },
+        )
 
-    config = {
-        "configurable": {
-            "thread_id": request.thread_id,
-        }
-    }
+    # Non-streaming: invoke and return full JSON response
+    graph = _get_graph()
+    config = {"configurable": {"thread_id": request.thread_id}}
 
     result = await graph.ainvoke(
         {
