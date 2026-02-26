@@ -14,4 +14,14 @@ build/
 # IDE
 .idea/
 .vscode/
+.cursor/
 *.swp
+
+# OS
+.DS_Store
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Testing
+.pytest_cache/
