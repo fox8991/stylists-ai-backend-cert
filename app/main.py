@@ -1,0 +1,98 @@
+# app/main.py
+"""FastAPI application for the Stylists.ai agent."""
+
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from langchain_core.messages import HumanMessage
+from pydantic import BaseModel
+
+from app.agent.graph import create_graph
+from app.config import settings
+
+_graph = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize the agent graph on startup."""
+    global _graph
+    _graph = create_graph()
+    yield
+
+
+app = FastAPI(title="Stylists.ai Agent API", lifespan=lifespan)
+
+
+class ChatRequest(BaseModel):
+    """Chat endpoint request body."""
+
+    message: str
+    user_id: str = "demo_user"
+    thread_id: str = "default"
+
+
+class ChatResponse(BaseModel):
+    """Chat endpoint response body."""
+
+    response: str
+    tool_calls: list[dict] = []
+    observations_stored: list[str] = []
+
+
+def _extract_tool_calls(messages: list) -> list[dict]:
+    """Extract tool call info from message history."""
+    tool_calls = []
+    for msg in messages:
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
+            for tc in msg.tool_calls:
+                tool_calls.append({"name": tc["name"], "args": tc["args"]})
+    return tool_calls
+
+
+def _get_graph():
+    """Get the graph, lazily initializing if needed."""
+    global _graph
+    if _graph is None:
+        _graph = create_graph()
+    return _graph
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest) -> ChatResponse:
+    """Send a message to the Stylist Agent.
+
+    Args:
+        request: Chat request with message, user_id, and thread_id.
+
+    Returns:
+        Agent response with tool call history.
+    """
+    graph = _get_graph()
+
+    config = {
+        "configurable": {
+            "thread_id": request.thread_id,
+        }
+    }
+
+    result = await graph.ainvoke(
+        {
+            "messages": [HumanMessage(content=request.message)],
+            "user_id": request.user_id,
+            "user_profile": {},
+            "observations": [],
+        },
+        config=config,
+    )
+
+    return ChatResponse(
+        response=result["messages"][-1].content,
+        tool_calls=_extract_tool_calls(result["messages"]),
+    )
+
+
+@app.get("/health")
+async def health() -> dict:
+    """Health check endpoint."""
+    return {"status": "healthy", "model": settings.LLM_MODEL}
