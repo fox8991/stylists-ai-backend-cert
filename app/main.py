@@ -5,8 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessageChunk
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 from pydantic import BaseModel
 
 from app.agent.graph import create_graph
@@ -80,26 +79,57 @@ async def _stream_agent_response(request: ChatRequest):
         "observations": [],
     }
 
+    # Track tool calls being assembled from chunks
+    pending_tool_calls: dict[str, dict] = {}
+
     async for chunk, metadata in graph.astream(
         input_state, config=config, stream_mode="messages"
     ):
-        # Stream LLM tokens from the agent node
         if isinstance(chunk, AIMessageChunk):
-            # Token content
+            # Stream text tokens
             if chunk.content:
                 event = {"type": "token", "content": chunk.content}
                 yield f"data: {json.dumps(event)}\n\n"
 
-            # Tool calls
+            # Accumulate tool call chunks (name and args arrive separately)
             if chunk.tool_call_chunks:
                 for tc in chunk.tool_call_chunks:
+                    tc_id = tc.get("id", tc.get("index", ""))
+                    if tc_id not in pending_tool_calls:
+                        pending_tool_calls[tc_id] = {"name": "", "args": ""}
                     if tc.get("name"):
-                        event = {
-                            "type": "tool_call",
-                            "name": tc["name"],
-                            "args": tc.get("args", ""),
-                        }
-                        yield f"data: {json.dumps(event)}\n\n"
+                        pending_tool_calls[tc_id]["name"] = tc["name"]
+                    if tc.get("args"):
+                        pending_tool_calls[tc_id]["args"] += tc["args"]
+
+        # Complete AIMessage with tool_calls = agent decided to call tools
+        elif isinstance(chunk, AIMessage) and chunk.tool_calls:
+            for tc in chunk.tool_calls:
+                event = {
+                    "type": "tool_call",
+                    "name": tc["name"],
+                    "args": tc["args"],
+                }
+                yield f"data: {json.dumps(event)}\n\n"
+            pending_tool_calls.clear()
+
+        # ToolMessage = tool finished executing, emit result
+        elif isinstance(chunk, ToolMessage):
+            event = {
+                "type": "tool_result",
+                "name": chunk.name,
+            }
+            yield f"data: {json.dumps(event)}\n\n"
+
+    # Emit any tool calls that were only seen as chunks (fallback)
+    for tc in pending_tool_calls.values():
+        if tc["name"]:
+            try:
+                args = json.loads(tc["args"]) if tc["args"] else {}
+            except json.JSONDecodeError:
+                args = tc["args"]
+            event = {"type": "tool_call", "name": tc["name"], "args": args}
+            yield f"data: {json.dumps(event)}\n\n"
 
     yield f"data: {json.dumps({'type': 'end'})}\n\n"
 

@@ -74,6 +74,10 @@ async def test_chat_streaming():
     assert len(token_events) > 0, "Should have streamed at least one token"
     assert len(end_events) == 1, "Should have exactly one end event"
 
+    # Should have tool call events (agent uses RAG for style questions)
+    tool_events = [e for e in events if e["type"] in ("tool_call", "tool_result")]
+    assert len(tool_events) > 0, "Should have tool call/result events"
+
     # Reassemble the full response from tokens
     full_response = "".join(e["content"] for e in token_events)
     assert len(full_response) > 50
