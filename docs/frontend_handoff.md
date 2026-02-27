@@ -36,20 +36,27 @@ Send a message to the styling agent. **Streams by default** via Server-Sent Even
 Returns `text/event-stream` with SSE events:
 
 ```
+data: {"type": "token", "content": "Let me"}
+data: {"type": "token", "content": " look"}
+data: {"type": "token", "content": " that up"}
+data: {"type": "tool_call", "name": "search_style_knowledge", "args": {"query": "Deep Autumn color palette", "domain": "color_theory"}}
+data: {"type": "tool_result", "name": "search_style_knowledge", "content": "[Source 1: color_theory/warm_seasons.md]\nDeep Autumn is characterized by..."}
 data: {"type": "token", "content": "Deep"}
 data: {"type": "token", "content": " Autumn"}
 data: {"type": "token", "content": " looks"}
 data: {"type": "token", "content": " best"}
-...
-data: {"type": "tool_call", "name": "search_style_knowledge", "args": "..."}
+data: {"type": "token", "content": " in warm"}
 ...
 data: {"type": "end"}
 ```
 
 Event types:
 - `token` — a chunk of the agent's response text. Append `content` to build the full message.
-- `tool_call` — the agent is calling a tool. Use `name` to show UI indicators (e.g., "Searching knowledge base...").
+- `tool_call` — the agent is calling a tool. `name` identifies the tool, `args` contains the parameters. Show a UI indicator (e.g., "Searching knowledge base...").
+- `tool_result` — a tool has returned results. `name` is the tool, `content` is the result text. Can be used for collapsible "Sources" sections in the UI.
 - `end` — the response is complete.
+
+**Typical event flow:** `token`* → `tool_call` → `tool_result` → `token`* → `end`. The agent may call tools multiple times in one response.
 
 **Frontend usage (JavaScript):**
 ```javascript
@@ -70,11 +77,15 @@ while (true) {
     if (line.startsWith("data: ")) {
       const event = JSON.parse(line.slice(6));
       if (event.type === "token") {
-        // Append to chat message
+        // Append event.content to chat message
       } else if (event.type === "tool_call") {
-        // Show "Searching..." indicator
+        // Show indicator: "Searching style knowledge..." / "Looking at wardrobe..."
+        // event.name = tool name, event.args = tool arguments
+      } else if (event.type === "tool_result") {
+        // Tool finished. event.content has the retrieved text.
+        // Optionally show in a collapsible "Sources" section.
       } else if (event.type === "end") {
-        // Done
+        // Response complete
       }
     }
   }
@@ -120,10 +131,25 @@ uv run uvicorn app.main:app --reload --port 8000
 
 Server runs at `http://localhost:8000`.
 
+## CORS
+
+CORS is not yet configured. If the frontend runs on a different origin (e.g., `http://localhost:3000`), the backend needs CORS middleware added to `app/main.py`:
+
+```python
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # frontend origin
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
 ## Key UX Considerations
 
 1. **Streaming is the default** — tokens arrive incrementally via SSE. Render them as they come for a responsive chat experience.
-2. **tool_call events** — show what the agent is doing ("Searching style knowledge...", "Looking at your wardrobe...") while the user waits for content tokens.
+2. **tool_call / tool_result events** — show what the agent is doing ("Searching style knowledge...") while the user waits. Optionally display retrieved sources from `tool_result.content` in a collapsible section.
 3. **thread_id for conversation continuity** — generate a UUID per chat session so multi-turn conversations work.
 4. **First token may take a few seconds** — the agent does RAG retrieval before generating. Show a typing indicator until the first token arrives.
 

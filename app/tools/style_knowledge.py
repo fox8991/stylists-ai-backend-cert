@@ -1,63 +1,42 @@
 """RAG retrieval tool for fashion knowledge base."""
 
 from langchain_core.tools import tool
-from qdrant_client.http import models
 
-_vector_store = None
-
-
-def init_style_tool(vector_store) -> None:
-    """Initialize the tool with a vector store instance.
-
-    Called once at app startup from lifespan.
-
-    Args:
-        vector_store: A QdrantVectorStore to query.
-    """
-    global _vector_store
-    _vector_store = vector_store
+from rag.registry import rag_registry
 
 
-def search_style_knowledge_func(query: str, domain: str | None = None) -> str:
+async def search_style_knowledge_func(query: str, domain: str | None = None) -> str:
     """Search fashion knowledge base. Callable for testing.
 
     Args:
         query: What styling knowledge to search for.
-        domain: Optional filter — one of: color_theory, body_shapes,
-                style_archetypes, occasion_dressing, wardrobe_building,
-                fundamentals.
+        domain: Optional post-retrieval filter — one of: color_theory,
+                body_shapes, style_archetypes, occasion_dressing,
+                wardrobe_building, fundamentals.
 
     Returns:
         Retrieved styling knowledge relevant to the query.
     """
-    if _vector_store is None:
-        raise RuntimeError("Style tool not initialized. Call init_style_tool() first.")
+    if rag_registry.retriever is None:
+        raise RuntimeError("Retriever not initialized. Set rag_registry.retriever first.")
 
-    search_kwargs: dict = {"k": 5}
+    docs = await rag_registry.retriever.ainvoke(query)
 
     if domain:
-        search_kwargs["filter"] = models.Filter(
-            must=[
-                models.FieldCondition(
-                    key="metadata.domain",
-                    match=models.MatchValue(value=domain),
-                )
-            ]
-        )
+        docs = [d for d in docs if d.metadata.get("domain") == domain]
 
-    results = _vector_store.similarity_search(query, **search_kwargs)
-    if not results:
+    if not docs:
         return "No relevant fashion knowledge found."
 
     formatted = []
-    for i, doc in enumerate(results):
+    for i, doc in enumerate(docs):
         source = doc.metadata.get("source", "unknown")
         formatted.append(f"[Source {i + 1}: {source}]\n{doc.page_content}")
     return "\n\n".join(formatted)
 
 
 @tool
-def search_style_knowledge(query: str, domain: str | None = None) -> str:
+async def search_style_knowledge(query: str, domain: str | None = None) -> str:
     """Search the fashion knowledge base for styling advice.
 
     Use this tool to find information about color theory, body shapes,
@@ -75,4 +54,4 @@ def search_style_knowledge(query: str, domain: str | None = None) -> str:
     Returns:
         Retrieved styling knowledge relevant to the query.
     """
-    return search_style_knowledge_func(query, domain)
+    return await search_style_knowledge_func(query, domain)

@@ -2,23 +2,20 @@
 
 import pytest
 
-from app.tools.style_knowledge import init_style_tool
-from rag.chunking import chunk_documents
-from rag.loader import load_knowledge_files
-from rag.vectorstore import create_vector_store
+from rag.registry import rag_registry
+from rag.retrieval import create_naive_retriever
+from rag.vectorstore import get_vector_store
 
 _initialized = False
 
 
 @pytest.fixture(autouse=True, scope="session")
 def _init_vector_store():
-    """Initialize the vector store once for all tests."""
+    """Initialize the retriever and style tool once for all tests."""
     global _initialized
     if not _initialized:
-        docs = load_knowledge_files()
-        chunks = chunk_documents(docs)
-        vs = create_vector_store(chunks)
-        init_style_tool(vs)
+        rag_registry.vector_store = get_vector_store()
+        rag_registry.retriever = create_naive_retriever(rag_registry.vector_store, k=10)
         _initialized = True
 
 

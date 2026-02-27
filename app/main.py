@@ -3,33 +3,39 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.agent.graph import create_graph
-from app.tools.style_knowledge import init_style_tool
+from app.registry import app_registry
 from app.utils.streaming import build_input_state, extract_tool_calls, stream_agent_response
 from config import settings
-from rag.chunking import chunk_documents
-from rag.loader import load_knowledge_files
-from rag.vectorstore import create_vector_store
-
-_graph = None
+from rag.registry import rag_registry
+from rag.retrieval import create_naive_retriever
+from rag.vectorstore import get_vector_store
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize the vector store and agent graph on startup."""
-    global _graph
-    docs = load_knowledge_files()
-    chunks = chunk_documents(docs)
-    vs = create_vector_store(chunks)
-    init_style_tool(vs)
-    _graph = create_graph()
+    rag_registry.vector_store = get_vector_store()
+    rag_registry.retriever = create_naive_retriever(rag_registry.vector_store, k=10)
+    app_registry.graph = create_graph()
     yield
 
 
 app = FastAPI(title="Stylists.ai Agent API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "https://stylists-ai-frontend-cert.vercel.app",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class ChatRequest(BaseModel):
@@ -50,10 +56,9 @@ class ChatResponse(BaseModel):
 
 def _get_graph():
     """Get the graph, lazily initializing if needed."""
-    global _graph
-    if _graph is None:
-        _graph = create_graph()
-    return _graph
+    if app_registry.graph is None:
+        app_registry.graph = create_graph()
+    return app_registry.graph
 
 
 @app.post("/chat")
