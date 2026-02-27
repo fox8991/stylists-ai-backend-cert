@@ -1,8 +1,9 @@
 # tests/test_rag_ingest.py
 """Tests for RAG ingestion pipeline."""
 
-import pytest
-from app.rag.ingest import load_knowledge_files, chunk_documents, create_vector_store
+from rag.loader import load_knowledge_files
+from rag.chunking import chunk_documents
+from rag.vectorstore import create_vector_store
 
 
 def test_load_knowledge_files():

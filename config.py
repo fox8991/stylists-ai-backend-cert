@@ -1,4 +1,4 @@
-"""Application configuration loaded from environment variables."""
+"""Project configuration loaded from environment variables."""
 
 import os
 from dotenv import load_dotenv
@@ -7,7 +7,7 @@ load_dotenv()
 
 
 class Settings:
-    """App settings from environment variables."""
+    """Project settings from environment variables."""
 
     OPENAI_API_KEY: str = os.environ["OPENAI_API_KEY"]
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")

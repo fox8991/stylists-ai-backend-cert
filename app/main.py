@@ -1,23 +1,30 @@
 """FastAPI application for the Stylists.ai agent."""
 
-import json
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessageChunk, HumanMessage
 from pydantic import BaseModel
 
 from app.agent.graph import create_graph
-from app.config import settings
+from app.tools.style_knowledge import init_style_tool
+from app.utils.streaming import build_input_state, extract_tool_calls, stream_agent_response
+from config import settings
+from rag.chunking import chunk_documents
+from rag.loader import load_knowledge_files
+from rag.vectorstore import create_vector_store
 
 _graph = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize the agent graph on startup."""
+    """Initialize the vector store and agent graph on startup."""
     global _graph
+    docs = load_knowledge_files()
+    chunks = chunk_documents(docs)
+    vs = create_vector_store(chunks)
+    init_style_tool(vs)
     _graph = create_graph()
     yield
 
@@ -41,88 +48,12 @@ class ChatResponse(BaseModel):
     observations_stored: list[str] = []
 
 
-def _extract_tool_calls(messages: list) -> list[dict]:
-    """Extract tool call info from message history."""
-    tool_calls = []
-    for msg in messages:
-        if hasattr(msg, "tool_calls") and msg.tool_calls:
-            for tc in msg.tool_calls:
-                tool_calls.append({"name": tc["name"], "args": tc["args"]})
-    return tool_calls
-
-
 def _get_graph():
     """Get the graph, lazily initializing if needed."""
     global _graph
     if _graph is None:
         _graph = create_graph()
     return _graph
-
-
-def _build_input_state(request: ChatRequest) -> dict:
-    """Build the input state dict for graph invocation."""
-    return {
-        "messages": [HumanMessage(content=request.message)],
-        "user_id": request.user_id,
-        "user_profile": {},
-        "observations": [],
-    }
-
-
-async def _stream_agent_response(request: ChatRequest):
-    """Stream agent response as Server-Sent Events.
-
-    Uses two stream modes simultaneously:
-        - "messages": streams LLM tokens for real-time text display
-        - "updates": provides complete node outputs with full tool_calls
-
-    Yields SSE events:
-        - {"type": "token", "content": "..."} for each LLM token
-        - {"type": "tool_call", "name": "...", "args": {...}} when agent calls a tool
-        - {"type": "tool_result", "name": "..."} when a tool finishes
-        - {"type": "end"} when the response is complete
-
-    Args:
-        request: Chat request with message, user_id, and thread_id.
-    """
-    graph = _get_graph()
-    config = {"configurable": {"thread_id": request.thread_id}}
-    input_state = _build_input_state(request)
-
-    async for mode, chunk in graph.astream(
-        input_state, config=config, stream_mode=["messages", "updates"]
-    ):
-        if mode == "messages":
-            msg_chunk, metadata = chunk
-            # Only stream text tokens from AIMessageChunk (the LLM output)
-            if isinstance(msg_chunk, AIMessageChunk) and msg_chunk.content:
-                event = {"type": "token", "content": msg_chunk.content}
-                yield f"data: {json.dumps(event)}\n\n"
-
-        elif mode == "updates":
-            # "updates" gives complete node outputs: {"node_name": state_update}
-            for node_name, state_update in chunk.items():
-                messages = state_update.get("messages", [])
-                for msg in messages:
-                    # Extract complete tool_calls from agent node output
-                    if hasattr(msg, "tool_calls") and msg.tool_calls:
-                        for tc in msg.tool_calls:
-                            event = {
-                                "type": "tool_call",
-                                "name": tc["name"],
-                                "args": tc["args"],
-                            }
-                            yield f"data: {json.dumps(event)}\n\n"
-                    # Extract tool results from tools node output
-                    if hasattr(msg, "name") and node_name == "tools":
-                        event = {
-                            "type": "tool_result",
-                            "name": msg.name,
-                            "content": msg.content if isinstance(msg.content, str) else json.dumps(msg.content),
-                        }
-                        yield f"data: {json.dumps(event)}\n\n"
-
-    yield f"data: {json.dumps({'type': 'end'})}\n\n"
 
 
 @app.post("/chat")
@@ -136,9 +67,11 @@ async def chat(request: ChatRequest, stream: bool = Query(default=True)):
     Returns:
         SSE stream or JSON response depending on stream parameter.
     """
+    graph = _get_graph()
+
     if stream:
         return StreamingResponse(
-            _stream_agent_response(request),
+            stream_agent_response(graph, request.message, request.user_id, request.thread_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -146,18 +79,15 @@ async def chat(request: ChatRequest, stream: bool = Query(default=True)):
             },
         )
 
-    # Non-streaming: invoke and return full JSON response
-    graph = _get_graph()
     config = {"configurable": {"thread_id": request.thread_id}}
-
     result = await graph.ainvoke(
-        _build_input_state(request),
+        build_input_state(request.message, request.user_id),
         config=config,
     )
 
     return ChatResponse(
         response=result["messages"][-1].content,
-        tool_calls=_extract_tool_calls(result["messages"]),
+        tool_calls=extract_tool_calls(result["messages"]),
     )
 
 

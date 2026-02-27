@@ -1,27 +1,21 @@
-# app/tools/style_knowledge.py
 """RAG retrieval tool for fashion knowledge base."""
 
 from langchain_core.tools import tool
 from qdrant_client.http import models
 
-from app.rag.ingest import (
-    build_retriever,
-    chunk_documents,
-    create_vector_store,
-    load_knowledge_files,
-)
-
 _vector_store = None
 
 
-def get_vector_store():
-    """Get or create the vector store (singleton)."""
+def init_style_tool(vector_store) -> None:
+    """Initialize the tool with a vector store instance.
+
+    Called once at app startup from lifespan.
+
+    Args:
+        vector_store: A QdrantVectorStore to query.
+    """
     global _vector_store
-    if _vector_store is None:
-        docs = load_knowledge_files()
-        chunks = chunk_documents(docs)
-        _vector_store = create_vector_store(chunks)
-    return _vector_store
+    _vector_store = vector_store
 
 
 def search_style_knowledge_func(query: str, domain: str | None = None) -> str:
@@ -36,7 +30,9 @@ def search_style_knowledge_func(query: str, domain: str | None = None) -> str:
     Returns:
         Retrieved styling knowledge relevant to the query.
     """
-    vs = get_vector_store()
+    if _vector_store is None:
+        raise RuntimeError("Style tool not initialized. Call init_style_tool() first.")
+
     search_kwargs: dict = {"k": 5}
 
     if domain:
@@ -49,7 +45,7 @@ def search_style_knowledge_func(query: str, domain: str | None = None) -> str:
             ]
         )
 
-    results = vs.similarity_search(query, **search_kwargs)
+    results = _vector_store.similarity_search(query, **search_kwargs)
     if not results:
         return "No relevant fashion knowledge found."
 

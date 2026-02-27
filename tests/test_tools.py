@@ -1,7 +1,6 @@
 # tests/test_tools.py
 """Tests for agent tools."""
 
-import pytest
 from app.tools.style_knowledge import search_style_knowledge_func
 
 

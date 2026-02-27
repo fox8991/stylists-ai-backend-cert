@@ -9,7 +9,7 @@ from langgraph.prebuilt import ToolNode
 
 from app.agent.prompts import build_system_prompt
 from app.agent.state import AgentState
-from app.config import settings
+from config import settings
 from app.tools.style_knowledge import search_style_knowledge
 
 
