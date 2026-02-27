@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessageChunk, HumanMessage
 from pydantic import BaseModel
 
 from app.agent.graph import create_graph
@@ -59,12 +59,27 @@ def _get_graph():
     return _graph
 
 
+def _build_input_state(request: ChatRequest) -> dict:
+    """Build the input state dict for graph invocation."""
+    return {
+        "messages": [HumanMessage(content=request.message)],
+        "user_id": request.user_id,
+        "user_profile": {},
+        "observations": [],
+    }
+
+
 async def _stream_agent_response(request: ChatRequest):
     """Stream agent response as Server-Sent Events.
+
+    Uses two stream modes simultaneously:
+        - "messages": streams LLM tokens for real-time text display
+        - "updates": provides complete node outputs with full tool_calls
 
     Yields SSE events:
         - {"type": "token", "content": "..."} for each LLM token
         - {"type": "tool_call", "name": "...", "args": {...}} when agent calls a tool
+        - {"type": "tool_result", "name": "..."} when a tool finishes
         - {"type": "end"} when the response is complete
 
     Args:
@@ -72,64 +87,40 @@ async def _stream_agent_response(request: ChatRequest):
     """
     graph = _get_graph()
     config = {"configurable": {"thread_id": request.thread_id}}
-    input_state = {
-        "messages": [HumanMessage(content=request.message)],
-        "user_id": request.user_id,
-        "user_profile": {},
-        "observations": [],
-    }
+    input_state = _build_input_state(request)
 
-    # Track tool calls being assembled from chunks
-    pending_tool_calls: dict[str, dict] = {}
-
-    async for chunk, metadata in graph.astream(
-        input_state, config=config, stream_mode="messages"
+    async for mode, chunk in graph.astream(
+        input_state, config=config, stream_mode=["messages", "updates"]
     ):
-        if isinstance(chunk, AIMessageChunk):
-            # Stream text tokens
-            if chunk.content:
-                event = {"type": "token", "content": chunk.content}
+        if mode == "messages":
+            msg_chunk, metadata = chunk
+            # Only stream text tokens from AIMessageChunk (the LLM output)
+            if isinstance(msg_chunk, AIMessageChunk) and msg_chunk.content:
+                event = {"type": "token", "content": msg_chunk.content}
                 yield f"data: {json.dumps(event)}\n\n"
 
-            # Accumulate tool call chunks (name and args arrive separately)
-            if chunk.tool_call_chunks:
-                for tc in chunk.tool_call_chunks:
-                    tc_id = tc.get("id", tc.get("index", ""))
-                    if tc_id not in pending_tool_calls:
-                        pending_tool_calls[tc_id] = {"name": "", "args": ""}
-                    if tc.get("name"):
-                        pending_tool_calls[tc_id]["name"] = tc["name"]
-                    if tc.get("args"):
-                        pending_tool_calls[tc_id]["args"] += tc["args"]
-
-        # Complete AIMessage with tool_calls = agent decided to call tools
-        elif isinstance(chunk, AIMessage) and chunk.tool_calls:
-            for tc in chunk.tool_calls:
-                event = {
-                    "type": "tool_call",
-                    "name": tc["name"],
-                    "args": tc["args"],
-                }
-                yield f"data: {json.dumps(event)}\n\n"
-            pending_tool_calls.clear()
-
-        # ToolMessage = tool finished executing, emit result
-        elif isinstance(chunk, ToolMessage):
-            event = {
-                "type": "tool_result",
-                "name": chunk.name,
-            }
-            yield f"data: {json.dumps(event)}\n\n"
-
-    # Emit any tool calls that were only seen as chunks (fallback)
-    for tc in pending_tool_calls.values():
-        if tc["name"]:
-            try:
-                args = json.loads(tc["args"]) if tc["args"] else {}
-            except json.JSONDecodeError:
-                args = tc["args"]
-            event = {"type": "tool_call", "name": tc["name"], "args": args}
-            yield f"data: {json.dumps(event)}\n\n"
+        elif mode == "updates":
+            # "updates" gives complete node outputs: {"node_name": state_update}
+            for node_name, state_update in chunk.items():
+                messages = state_update.get("messages", [])
+                for msg in messages:
+                    # Extract complete tool_calls from agent node output
+                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                        for tc in msg.tool_calls:
+                            event = {
+                                "type": "tool_call",
+                                "name": tc["name"],
+                                "args": tc["args"],
+                            }
+                            yield f"data: {json.dumps(event)}\n\n"
+                    # Extract tool results from tools node output
+                    if hasattr(msg, "name") and node_name == "tools":
+                        event = {
+                            "type": "tool_result",
+                            "name": msg.name,
+                            "content": msg.content if isinstance(msg.content, str) else json.dumps(msg.content),
+                        }
+                        yield f"data: {json.dumps(event)}\n\n"
 
     yield f"data: {json.dumps({'type': 'end'})}\n\n"
 
@@ -160,12 +151,7 @@ async def chat(request: ChatRequest, stream: bool = Query(default=True)):
     config = {"configurable": {"thread_id": request.thread_id}}
 
     result = await graph.ainvoke(
-        {
-            "messages": [HumanMessage(content=request.message)],
-            "user_id": request.user_id,
-            "user_profile": {},
-            "observations": [],
-        },
+        _build_input_state(request),
         config=config,
     )
 
