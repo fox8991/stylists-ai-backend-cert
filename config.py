@@ -14,6 +14,7 @@ class Settings:
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-5.2")
     QDRANT_URL: str | None = os.getenv("QDRANT_URL")
     QDRANT_API_KEY: str | None = os.getenv("QDRANT_API_KEY")
+    TAVILY_API_KEY: str | None = os.getenv("TAVILY_API_KEY")
     LANGSMITH_API_KEY: str | None = os.getenv("LANGSMITH_API_KEY")
     LANGSMITH_PROJECT: str = os.getenv("LANGSMITH_PROJECT", "stylists-ai")
 
