@@ -5,6 +5,7 @@ from langchain_core.messages import SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 
 from app.agent.prompts import build_system_prompt
@@ -56,7 +57,7 @@ def should_continue(state: AgentState) -> str:
     return "end"
 
 
-def create_graph() -> StateGraph:
+def create_graph() -> CompiledStateGraph:
     """Create and compile the agent graph.
 
     Returns:
