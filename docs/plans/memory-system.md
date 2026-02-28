@@ -88,15 +88,76 @@ async with (
 
 Both short-term and long-term memory use the same DB connection.
 
+## User Profile: Cert vs Production
+
+### How user_profile flows through the system
+
+The `AgentState` has `user_profile: dict` and `observations: list[str]`. The `agent_node` reads these from state and injects them into the system prompt via `build_system_prompt()`. The agent then has the user's context for personalized responses.
+
+### Cert Challenge (current)
+
+No memory nodes, no store. Hardcode a demo profile in `build_input_state()`:
+
+```python
+# app/utils/streaming.py
+DEMO_PROFILE = {
+    "body_shape": "inverted_triangle",
+    "color_season": "deep_autumn",
+    "style_archetype": "classic_natural",
+    "preferences": {
+        "loves": ["earth tones", "structured pieces"],
+        "avoids": ["bright neons", "heavy patterns"],
+    },
+}
+
+def build_input_state(message: str, user_id: str) -> dict:
+    return {
+        "messages": [HumanMessage(content=message)],
+        "user_id": user_id,
+        "user_profile": DEMO_PROFILE,
+        "observations": [],
+    }
+```
+
+Graph flow: `START → agent ⇄ tools → END`
+
+Profile is static — every request gets the same demo profile. No `load_memory` or `save_memory` nodes.
+
+### Production
+
+Add `load_memory` and `save_memory` nodes to the graph. Profile comes from the Store, not hardcoded.
+
+Graph flow: `START → load_memory → agent ⇄ tools → save_memory → END`
+
+```python
+def load_memory_node(state, *, store):
+    """Reads profile + observations from store. Only updates state fields, no messages."""
+    user_id = state["user_id"]
+    profile_items = store.search(("users", user_id, "profile"))
+    profile = profile_items[0].value if profile_items else {}
+    observations = store.search(
+        ("users", user_id, "observations"),
+        query=state["messages"][-1].content,
+        limit=5,
+    )
+    return {
+        "user_profile": profile,
+        "observations": [o.value["content"] for o in observations],
+    }
+```
+
+Key difference: `load_memory` only updates `user_profile` and `observations` in state — it does NOT create any messages. The agent node is the first thing that touches messages.
+
 ## Implementation Steps
 
-1. Add `langgraph-checkpoint-postgres` and `langgraph-store-postgres` to dependencies
-2. Add `context_schema=Context` to graph builder in `app/agent/graph.py`
-3. Add `load_memory` node — reads user profile + observations from store, injects into system prompt
-4. Add `save_memory` node — LLM extracts new facts from conversation, stores to memory
-5. Update `app/main.py` to pass `context=Context(user_id=...)` at invocation
-6. For prod: swap `MemorySaver` → `AsyncPostgresSaver`, add `AsyncPostgresStore`
-7. Add `SUPABASE_DB_URI` to config
+1. **Cert (now):** Hardcode `DEMO_PROFILE` in `build_input_state()`, skip memory nodes
+2. **Post-cert:** Add `InMemoryStore` + `load_memory`/`save_memory` nodes
+3. **Production:** Swap to persistent storage:
+   - Add `langgraph-checkpoint-postgres` and `langgraph-store-postgres` to dependencies
+   - Add `context_schema=Context` to graph builder in `app/agent/graph.py`
+   - Swap `MemorySaver` → `AsyncPostgresSaver`, add `AsyncPostgresStore`
+   - Update `app/main.py` to pass `context=Context(user_id=...)` at invocation
+   - Add `SUPABASE_DB_URI` to config
 
 ## References
 

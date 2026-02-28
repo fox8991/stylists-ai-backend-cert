@@ -4,13 +4,34 @@ import json
 
 from langchain_core.messages import AIMessageChunk, HumanMessage
 
+# Hardcoded demo profile for cert challenge.
+# In production, this is loaded from the Store via a load_memory node.
+DEMO_PROFILE: dict = {
+    "gender": "male",
+    "height": "5'10\"",
+    "weight": "170 lbs",
+    "body_shape": "inverted_triangle",
+    "color_season": "deep_autumn",
+    "skin_tone": "warm, dark",
+    "style_archetype": "classic_natural",
+    "preferences": {
+        "loves": ["earth tones", "structured pieces", "clean lines"],
+        "avoids": ["bright neons", "heavy patterns", "oversized fits"],
+    },
+    "lifestyle": {
+        "work": "business_casual_office",
+        "social": "casual_dinners",
+        "active": "hiking",
+    },
+}
+
 
 def build_input_state(message: str, user_id: str) -> dict:
     """Build the input state dict for graph invocation."""
     return {
         "messages": [HumanMessage(content=message)],
         "user_id": user_id,
-        "user_profile": {},
+        "user_profile": DEMO_PROFILE,
         "observations": [],
     }
 
