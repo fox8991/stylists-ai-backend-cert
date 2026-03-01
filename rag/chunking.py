@@ -6,8 +6,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 def chunk_documents(
     documents: list[Document],
-    chunk_size: int = 500,
-    chunk_overlap: int = 30,
+    chunk_size: int = 1000,
+    chunk_overlap: int = 100,
 ) -> list[Document]:
     """Split documents into chunks, preserving metadata.
 
