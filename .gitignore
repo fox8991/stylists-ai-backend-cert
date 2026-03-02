@@ -25,3 +25,6 @@ build/
 
 # Testing
 .pytest_cache/
+
+# Playwright MCP
+.playwright-mcp/

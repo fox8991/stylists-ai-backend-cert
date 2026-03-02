@@ -11,13 +11,14 @@ from langgraph.prebuilt import ToolNode
 from app.agent.prompts import build_system_prompt
 from app.agent.state import AgentState
 from config import settings
+from app.tools.query_wardrobe import query_wardrobe
 from app.tools.search_trends import search_trends
 from app.tools.style_knowledge import search_style_knowledge
 
 
 def _get_tools() -> list:
     """Return the list of tools available to the agent."""
-    return [search_style_knowledge, search_trends]
+    return [search_style_knowledge, search_trends, query_wardrobe]
 
 
 def agent_node(state: AgentState) -> dict:
