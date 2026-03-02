@@ -64,7 +64,9 @@ To the user, it feels like chatting with a personal stylist who already knows yo
 | **Web search** | Tavily API | Designed for LLM tool use, returns clean structured results |
 | **Backend Framework** | FastAPI | Natural choice for hosting a langgraph agent based backend, Async support, SSE streaming |
 | **Frontend** | Next.js (Vercel) | Fast deployment, good streaming/SSE support |
-| **Monitoring** | Langsmith | Comprehensive observability support |
+| **Evaluation** | RAGAS | RAG evaluation framework with synthetic data generation and metrics (faithfulness, context recall, answer relevancy) |
+| **Monitoring** | LangSmith | Comprehensive observability for main stylists agent, also cost/latency tracking across retrieval experiments |
+| **Deployment** | Render (backend) + Vercel (frontend) | Free-tier hosting with SSE streaming support; Render for Python/FastAPI, Vercel for Next.js |
 
 ### RAG and Agent Components
 
@@ -90,15 +92,22 @@ To the user, it feels like chatting with a personal stylist who already knows yo
 
 | Data Source | Type | What It's Used For |
 |--------|------|-------------------|
-| **24 knowledge base files** | Static, curated in 6 domains: color_theory, body_shapes, style_archetypes, occasion_dressing, wardrobe_building, fundamentals | RAG knowledge base for expert styling advice across 6 domains, built from deep-research reports across Gemini/Claude/ChatGPT for |
+| **24 knowledge base files** | Static, curated in 6 domains: color_theory, body_shapes, style_archetypes, occasion_dressing, wardrobe_building, fundamentals | RAG knowledge base for expert styling advice across 6 domains, built from deep-research reports across Gemini/Claude/ChatGPT |
 | **Sample wardrobe data** | Static, in-memory | 19 clothing items representing a demo user's closet (hardcoded for cert, database for production) |
 | **Demo user profile** | Static, in-memory | Hardcoded style profile (Deep Autumn, inverted triangle, classic natural) injected into system prompt |
-| **Qdrant Cloud** | Managed vector DB | Stores and retrieves embedded knowledge chunks |
+| **Qdrant** | Managed vector DB on Qdrant cloud | Stores and retrieves embedded knowledge chunks |
 
 | API Source | Type | What It's Used For |
 |--------|------|-------------------|
 | **Tavily API** | External API | Real-time web search for current fashion trends |
 
+| Tool | Type | What It's Used For |
+|------|------|-------------------|
+| **search_style_knowledge** | RAG retrieval | Embeds user query via OpenAI, searches Qdrant for top-k matching knowledge chunks |
+| **search_trends** | External API (Tavily) | Real-time web search for current fashion trends |
+| **query_wardrobe** | In-memory filter | Filters user's wardrobe items by category, color, occasion, season, and formality |
+
+**How they interact during usage:** When a user asks a styling question, the agent first decides which tools to call. For RAG queries, the `search_style_knowledge` tool embeds the query via OpenAI, searches Qdrant Cloud for the top-k matching chunks, and returns them as context for the LLM to reason over. For trend queries, the `search_trends` tool calls the Tavily API for real-time web results. For wardrobe queries, the `query_wardrobe` tool filters the in-memory wardrobe data. The agent can chain multiple tools in a single response — e.g., searching style knowledge for wedding dress codes, then querying the wardrobe to find matching items — before synthesizing a final answer grounded in the user's profile.
 
 ### Default Chunking Strategy
 
@@ -143,7 +152,13 @@ The prototype consists of:
 
 ### Tests
 
-Both unit-tests in `tests/` folder and end-to-end test using the front-end.
+End-to-end testing was also performed through the live frontend, verifying single-tool and multi-tool queries stream correctly.
+
+18 unit/integration tests passing across 4 test files:
+- **`test_agent.py`**: Agent responds to style questions, uses search tool appropriately
+- **`test_api.py`**: Health endpoint, chat endpoint (both streaming SSE and non-streaming JSON)
+- **`test_rag_ingest.py`**:  Knowledge file loading, document chunking, vector store creation
+- **`test_tools.py`**: All 3 tools: RAG search with/without domain filter, trend search with/without time range, wardrobe queries with category/occasion/formality/combined filters and no-match handling
 
 ---
 
@@ -189,7 +204,9 @@ The baseline pipeline achieves strong faithfulness (0.906) and answer relevancy 
 
 ### Chosen Advanced Retrieval Technique
 
-We evaluated **5 retrieval strategies**:
+We chose **ensemble retrieval** as our advanced technique. Our hypothesis: fashion queries mix specific terminology (e.g., "deep autumn", "inverted triangle") with open-ended conceptual questions (e.g., "what looks good on me"), so combining dense semantic search with other retrieval strategies like keyword-based BM25 and reranking should improve context recall by capturing both types of signal.
+
+We evaluated **5 retrieval strategies** to test this:
 
 1. **Naive dense retrieval** (baseline) — cosine similarity search, k=10
 2. **BM25 sparse retrieval** — keyword-based matching, k=10
