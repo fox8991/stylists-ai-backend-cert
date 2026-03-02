@@ -255,21 +255,72 @@ For Demo Day, the improvements will focus on the **agent layer** rather than ret
 
 ## Appendix
 
-### Key Files
+### Project Structure
 
-| File | Purpose |
-|------|---------|
-| [`app/main.py`](app/main.py) | FastAPI endpoints |
-| [`app/agent/graph.py`](app/agent/graph.py) | LangGraph ReAct agent |
-| [`app/agent/prompts.py`](app/agent/prompts.py) | System prompt with profile injection |
-| [`app/tools/style_knowledge.py`](app/tools/style_knowledge.py) | RAG retrieval tool |
-| [`app/tools/search_trends.py`](app/tools/search_trends.py) | Tavily trend search tool |
-| [`app/tools/query_wardrobe.py`](app/tools/query_wardrobe.py) | Wardrobe filter tool |
-| [`app/data/wardrobe.py`](app/data/wardrobe.py) | Sample wardrobe items |
-| [`rag/chunking.py`](rag/chunking.py) | Document chunking |
-| [`rag/vectorstore.py`](rag/vectorstore.py) | Qdrant vector store |
-| [`rag/retrieval.py`](rag/retrieval.py) | Retriever factories |
-| [`evals/ragas_eval.ipynb`](evals/ragas_eval.ipynb) | Full RAGAS evaluation |
+```
+stylists-ai-backend-cert/
+│
+├── app/                          # FastAPI backend application
+│   ├── main.py                   # API endpoints (POST /chat, GET /health), lifespan init
+│   ├── agent/                    # LangGraph agent
+│   │   ├── graph.py              # ReAct agent graph (START → agent ⇄ tools → END)
+│   │   ├── prompts.py            # System prompt with user profile/observation injection
+│   │   └── state.py              # AgentState TypedDict
+│   ├── tools/                    # Agent tools (each has @tool wrapper + testable _func)
+│   │   ├── style_knowledge.py    # RAG search over fashion knowledge base (Qdrant)
+│   │   ├── search_trends.py      # Live web trend search (Tavily API)
+│   │   └── query_wardrobe.py     # Wardrobe item filter (category, color, occasion, etc.)
+│   ├── data/                     # Static data for cert demo
+│   │   └── wardrobe.py           # 19 sample wardrobe items for demo user profile
+│   └── utils/
+│       └── streaming.py          # SSE streaming, demo profile, input state builder
+│
+├── rag/                          # RAG pipeline (standalone, used by both app and evals)
+│   ├── loader.py                 # Load 24 knowledge files with domain metadata
+│   ├── chunking.py               # RecursiveCharacterTextSplitter (1000/100 default)
+│   ├── vectorstore.py            # Qdrant Cloud connection / in-memory fallback
+│   └── retrieval.py              # Retriever factories (naive, BM25, rerank, ensemble)
+│
+├── knowledge/                    # Fashion knowledge base (24 markdown files)
+│   ├── color_theory/             # Seasonal color analysis, undertones, palettes
+│   ├── body_shapes/              # Body type styling, silhouettes, proportions
+│   ├── style_archetypes/         # Style personalities, signature looks
+│   ├── occasion_dressing/        # Dress codes, event-specific styling
+│   ├── wardrobe_building/        # Capsule wardrobes, essentials, planning
+│   └── fundamentals/             # Fit, fabric, proportion, style principles
+│
+├── evals/                        # RAGAS evaluation pipeline
+│   ├── ragas_eval.ipynb          # Main eval notebook (chunking + retrieval experiments)
+│   ├── synthetic_testset.csv     # 21 synthetic test questions (SDG-generated)
+│   ├── run_baseline_eval.py      # SDG generation + baseline eval script
+│   └── results/                  # Saved CSV results for all experiments
+│
+├── tests/                        # 18 tests across 4 files
+│   ├── test_agent.py             # Agent reasoning + tool usage
+│   ├── test_api.py               # API endpoints (streaming + non-streaming)
+│   ├── test_rag_ingest.py        # Knowledge loading, chunking, vector store
+│   └── test_tools.py             # All 3 tools with various filter combinations
+│
+├── scripts/
+│   └── ingest_to_qdrant.py       # One-time script to push chunks to Qdrant Cloud
+│
+├── config.py                     # Environment-based settings (API keys, model names)
+├── pyproject.toml                # Dependencies and project config
+└── README.md                     # This report
+```
+
+### Main Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| **API Layer** | [`app/main.py`](app/main.py) | Thin FastAPI server — SSE streaming endpoint, health check, lifespan initialization |
+| **Agent** | [`app/agent/`](app/agent) | LangGraph ReAct agent with tool-calling loop, dynamic system prompt with profile injection |
+| **Tools** | [`app/tools/`](app/tools) | Three agent tools: RAG knowledge search, Tavily trend search, wardrobe query filter |
+| **Demo Data** | [`app/data/`](app/data), [`app/utils/streaming.py`](app/utils/streaming.py) | Hardcoded user profile and 19 wardrobe items for cert demo (production: database-backed) |
+| **RAG Pipeline** | [`rag/`](rag) | Standalone pipeline: load → chunk → embed → store → retrieve. Used by both the app and eval notebooks |
+| **Knowledge Base** | [`knowledge/`](knowledge) | 24 curated markdown files across 6 styling domains, sourced from deep-research reports |
+| **Evaluation** | [`evals/`](evals) | RAGAS evaluation: synthetic test set, chunking experiments (3 configs), retrieval experiments (5 strategies), LangSmith cost/latency comparison |
+| **Tests** | [`tests/`](tests) | 18 unit/integration tests covering agent, API, RAG pipeline, and all tools |
 
 ### Links
 
