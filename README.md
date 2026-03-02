@@ -12,6 +12,10 @@
 
 **Live Demo:** [Frontend](https://stylists-ai-frontend-cert.vercel.app/chat) | [Backend](https://stylists-ai-backend-cert.onrender.com/docs)
 
+**Loom Demo:** https://www.loom.com/share/cc481a1cbf0b4ef791cc360fdb335316 
+
+**Written Document:** [README.md](README.md)
+
 ---
 
 ## Task 1: Defining the Problem, Audience, and Scope
@@ -322,7 +326,3 @@ stylists-ai-backend-cert/
 | **Knowledge Base** | [`knowledge/`](knowledge) | 24 curated markdown files across 6 styling domains, sourced from deep-research reports |
 | **Evaluation** | [`evals/`](evals) | RAGAS evaluation: synthetic test set, chunking experiments (3 configs), retrieval experiments (5 strategies), LangSmith cost/latency comparison |
 | **Tests** | [`tests/`](tests) | 18 unit/integration tests covering agent, API, RAG pipeline, and all tools |
-
-### Links
-
-- **Loom Demo:** [TODO]
