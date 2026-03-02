@@ -173,6 +173,7 @@ End-to-end testing was also performed through the live frontend, verifying singl
 
 The test set includes deliberately misspelled and informal queries (e.g., "wat is h shap for mens?") to test robustness.
 
+Synthetic data is generated in [`evals/run_baseline_eval.py`](evals/run_baseline_eval.py)
 Synthetic data location: [`evals/synthetic_testset.csv`](evals/synthetic_testset.csv)
 
 **Metrics evaluated:**
