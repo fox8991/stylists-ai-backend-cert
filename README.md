@@ -31,9 +31,8 @@ These queries demonstrate the system's core capabilities across its knowledge do
 1. **"What colors should I wear to look my best?"** — RAG retrieval from color theory knowledge + user profile (long term memory)
 2. **"What fits and silhouettes work best for my body type?"** — RAG retrieval from body shape knowledge + user profile (long term memory)
 3. **"What should I wear to a business casual office?"** — RAG retrieval from occasion dressing knowledge + user profile (long term memory)
-4. **"What essentials am I missing in my wardrobe?"** — RAG + wardrobe tool + user profile (long term memory)
-5. **"What should I wear to a wedding from my closet?"** — RAG + wardrobe tool + user profile (long term memory)
-6. **"What's trending this spring, and can I put together an outfit from what I own?"** — All 3 tools: trend search + RAG + wardrobe + user profile (long term memory)
+4. **"What should I wear to a wedding from my closet?"** — RAG + wardrobe tool + user profile (long term memory)
+5. **"What's trending this spring, and based on my color season, which trends would work best with what I already own?"** — All 3 tools: trend search + RAG + wardrobe + user profile (long term memory)
 
 Without RAG over styling expertise, user profile memory, and wardrobe data, a general chatbot cannot provide grounded, personalized answers to these questions.
 
