@@ -6,7 +6,7 @@
 
 **Date:** March 2026
 
-**GitHub:** [repo link]
+**GitHub:** https://github.com/fox8991/stylists-ai-backend-cert
 
 **Live Demo:** [Frontend](https://stylists-ai-frontend-cert.vercel.app/chat) | [Backend](https://stylists-ai-backend-cert.onrender.com/)
 
@@ -96,6 +96,7 @@ To the user, it feels like chatting with a personal stylist who already knows yo
 | **Qdrant Cloud** | Managed vector DB | Stores and retrieves embedded knowledge chunks |
 
 | API Source | Type | What It's Used For |
+|--------|------|-------------------|
 | **Tavily API** | External API | Real-time web search for current fashion trends |
 
 
