@@ -6,9 +6,11 @@
 
 **Date:** March 2026
 
-**GitHub:** https://github.com/fox8991/stylists-ai-backend-cert
+**GitHub for backend:** https://github.com/fox8991/stylists-ai-backend-cert
 
-**Live Demo:** [Frontend](https://stylists-ai-frontend-cert.vercel.app/chat) | [Backend](https://stylists-ai-backend-cert.onrender.com/)
+**Github for frontend:**: https://github.com/fox8991/stylists-ai-frontend-cert
+
+**Live Demo:** [Frontend](https://stylists-ai-frontend-cert.vercel.app/chat) | [Backend](https://stylists-ai-backend-cert.onrender.com/docs)
 
 ---
 
